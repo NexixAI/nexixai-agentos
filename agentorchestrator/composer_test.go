@@ -174,8 +174,8 @@ func TestCompose_OpsIntent_WithKB(t *testing.T) {
 	// Mock KB server — returns raw array of searchResultWire objects
 	kbSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode([]map[string]any{
-			{"ID": "1", "Repo": "nexixai-infra", "Path": "docs/cluster.md", "Title": "Cluster", "Snippet": "GPU nodes run on 192.168.50.x", "Score": 0.9},
-			{"ID": "2", "Repo": "nexixai-infra", "Path": "docs/slos.md", "Title": "SLOs", "Snippet": "Inference latency p99 < 5s", "Score": 0.8},
+			{"ID": "1", "Repo": "your-infra-repo", "Path": "docs/cluster.md", "Title": "Cluster", "Snippet": "GPU nodes run on internal subnet", "Score": 0.9},
+			{"ID": "2", "Repo": "your-infra-repo", "Path": "docs/slos.md", "Title": "SLOs", "Snippet": "Inference latency p99 < 5s", "Score": 0.8},
 		})
 	}))
 	defer kbSrv.Close()

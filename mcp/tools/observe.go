@@ -92,7 +92,7 @@ type AuditEntry struct {
 // ObserveDeps holds the dependencies required by RegisterObserveTools.
 type ObserveDeps struct {
 	PromClient   metrics.PrometheusClient
-	PortainerURL string                // e.g. "https://192.168.50.57:9443/api"
+	PortainerURL string                // e.g. "https://localhost:9443/api"
 	PortainerKey string                // X-API-Key value for Portainer
 	AuditStore   *InMemoryAuditStore   // may be nil if audit reading is not available
 }
