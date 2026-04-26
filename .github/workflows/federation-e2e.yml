@@ -1,0 +1,50 @@
+name: Federation E2E
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+jobs:
+  federation-e2e:
+    name: federation-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # docker compose is available on ubuntu-latest; this just prints versions for debugging.
+      - name: Docker versions
+        run: |
+          docker version
+          docker compose version
+
+      - name: Run Federation E2E via Docker
+        run: |
+          docker compose \
+            -f deploy/local/compose.federation-2node.yaml \
+            -f deploy/local/compose.federation-2node.ADDENDUM.yaml \
+            up --build --abort-on-container-exit federation-e2e
+
+      # Always emit logs so failures are actionable (and still works if the job succeeds).
+      - name: Dump compose logs (always)
+        if: always()
+        run: |
+          docker compose \
+            -f deploy/local/compose.federation-2node.yaml \
+            -f deploy/local/compose.federation-2node.ADDENDUM.yaml \
+            logs --no-color --timestamps
+
+      - name: Tear down compose (always)
+        if: always()
+        run: |
+          docker compose \
+            -f deploy/local/compose.federation-2node.yaml \
+            -f deploy/local/compose.federation-2node.ADDENDUM.yaml \
+            down -v --remove-orphans

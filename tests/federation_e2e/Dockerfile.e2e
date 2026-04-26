@@ -1,0 +1,6 @@
+FROM python:3.11-slim
+WORKDIR /e2e
+COPY tests/federation_e2e/requirements.txt /e2e/requirements.txt
+RUN pip install --no-cache-dir -r /e2e/requirements.txt
+COPY tests/federation_e2e /e2e/tests
+CMD ["python", "tests/run_federation_e2e.py"]

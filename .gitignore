@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Go build artifacts (future-proof)
+/agentos
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Local env
+.env
+*.local
+
+# Runtime data (persistence, audit logs)
+data/
+
+# Production secrets
+deploy/production/secrets/*
+!deploy/production/secrets/.gitkeep
+
+.claude/
+__pycache__/
+.aider*
+.aider/
+*.pyc
+coverage/
+.nyc_output/

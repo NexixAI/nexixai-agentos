@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "mode": "track",
+  "plan_version": "v1.025",
+  "next_track": 1,
+  "tracks": {
+    "1": {
+      "slug": "postgres-storage",
+      "doc": "docs/plan/v1.025/tracks/track-01-postgres-storage.md"
+    },
+    "2": {
+      "slug": "concurrency-fixes",
+      "doc": "docs/plan/v1.025/tracks/track-02-concurrency-fixes.md"
+    },
+    "3": {
+      "slug": "graceful-shutdown",
+      "doc": "docs/plan/v1.025/tracks/track-03-graceful-shutdown.md"
+    },
+    "4": {
+      "slug": "structured-logging",
+      "doc": "docs/plan/v1.025/tracks/track-04-structured-logging.md"
+    },
+    "5": {
+      "slug": "health-check-depth",
+      "doc": "docs/plan/v1.025/tracks/track-05-health-check-depth.md"
+    },
+    "6": {
+      "slug": "input-validation",
+      "doc": "docs/plan/v1.025/tracks/track-06-input-validation.md"
+    },
+    "7": {
+      "slug": "production-compose",
+      "doc": "docs/plan/v1.025/tracks/track-07-production-compose.md"
+    },
+    "8": {
+      "slug": "config-validation",
+      "doc": "docs/plan/v1.025/tracks/track-08-config-validation.md"
+    },
+    "9": {
+      "slug": "security-hardening",
+      "doc": "docs/plan/v1.025/tracks/track-09-security-hardening.md"
+    },
+    "10": {
+      "slug": "testing-infrastructure",
+      "doc": "docs/plan/v1.025/tracks/track-10-testing-infrastructure.md"
+    }
+  },
+  "notes": "v1.025 'gaps to production' — hardening-only release. No new features. Uses dual-agent calibration loop (docs/process/dual-agent-calibration-loop.md)."
+}

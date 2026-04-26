@@ -1,0 +1,46 @@
+version: "3.1"
+
+defaults:
+  max_tokens_multiplier: 1.0
+  enable_thinking: false
+  kb_search_enabled: false
+  kb_search_limit: 5
+
+intents:
+  code:
+    system_prompt: "You are a senior software engineer. Provide clear, well-structured code. Prefer correctness and readability over cleverness."
+    temperature: 0.3
+    max_tokens_multiplier: 2.0
+    kb_search_enabled: true
+    kb_scope: code
+    destination: model
+
+  reasoning:
+    enable_thinking: true
+    max_tokens_multiplier: 3.0
+    destination: model
+
+  ops:
+    system_prompt: "You are an infrastructure and operations specialist for NexixAI. Reference internal documentation when available. Be precise about commands, ports, and configurations."
+    temperature: 0.2
+    max_tokens_multiplier: 1.5
+    kb_search_enabled: true
+    kb_search_limit: 10
+    kb_scope: ops
+    destination: model
+
+  search:
+    system_prompt: "Synthesize information from the provided knowledge base context. Cite sources when available."
+    temperature: 0.4
+    max_tokens_multiplier: 1.5
+    kb_search_enabled: true
+    kb_search_limit: 15
+    kb_scope: all
+    destination: model
+
+  agent:
+    destination: agent
+
+  general:
+    max_tokens_multiplier: 1.0
+    destination: model

@@ -1,0 +1,9 @@
+.git
+.gitignore
+*.md
+docs/
+deploy/
+data/
+agentos
+*.test
+.claude/

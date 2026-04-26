@@ -1,0 +1,297 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  artifacts:
+    name: Verify required artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check AGENT_START_HERE.md exists
+        run: test -f AGENT_START_HERE.md || (echo "FAIL: AGENT_START_HERE.md missing" && exit 1)
+
+      - name: Check steering files exist
+        run: |
+          for f in CLAUDE.md AGENTS.md AI_CONTRACT.md SPEC_AUTHORITY.md; do
+            test -f "$f" || (echo "FAIL: $f missing" && exit 1)
+          done
+
+      - name: Check current version has PRS, plan, and calibration log
+        run: |
+          # Find the latest version directory in docs/plan/
+          LATEST=$(ls -d docs/plan/v* 2>/dev/null | sort -V | tail -1)
+          if [ -z "$LATEST" ]; then
+            echo "FAIL: No version directories found in docs/plan/"
+            exit 1
+          fi
+          VERSION=$(basename "$LATEST")
+          echo "Latest version: $VERSION"
+
+          # Check plan artifacts
+          test -f "$LATEST/plan.md" || (echo "FAIL: $LATEST/plan.md missing" && exit 1)
+          test -f "$LATEST/calibration-log.md" || (echo "FAIL: $LATEST/calibration-log.md missing" && exit 1)
+
+          # Check PRS
+          PRS_DIR="docs/product/agentos-prs/$VERSION"
+          test -f "$PRS_DIR/prs.md" || (echo "FAIL: $PRS_DIR/prs.md missing" && exit 1)
+
+          echo "All artifacts present for $VERSION"
+
+      - name: Check AGENT_START_HERE.md version matches latest plan
+        run: |
+          LATEST=$(ls -d docs/plan/v* 2>/dev/null | sort -V | tail -1)
+          VERSION=$(basename "$LATEST")
+          START_VERSION=$(grep -oP 'Current version.*?:\s*\K\S+' AGENT_START_HERE.md)
+          if [ "$START_VERSION" != "$VERSION" ]; then
+            echo "FAIL: AGENT_START_HERE.md says $START_VERSION but latest plan is $VERSION"
+            exit 1
+          fi
+          echo "OK: AGENT_START_HERE.md version ($START_VERSION) matches latest plan ($VERSION)"
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: agentos_test
+          POSTGRES_USER: agentos
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentos -d agentos_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Run tests with race detection
+        run: go test -race ./...
+
+      - name: Run integration tests
+        env:
+          AGENTOS_STORAGE_BACKEND: postgres
+          AGENTOS_DB_HOST: localhost
+          AGENTOS_DB_PORT: "5432"
+          AGENTOS_DB_NAME: agentos_test
+          AGENTOS_DB_USER: agentos
+          AGENTOS_DB_PASSWORD: testpass
+          AGENTOS_DB_SSLMODE: disable
+        run: go test -race -tags integration ./internal/storage/postgres/...
+
+      - name: Generate coverage
+        run: |
+          go test -race -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  config-schema:
+    name: Config schema drift detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract env vars from config-schema.yaml
+        run: |
+          grep -E '^\s+AGENTOS_' docs/config-schema.yaml | sed 's/^[[:space:]]*//' | sed 's/:.*//' | sort -u > /tmp/schema_vars.txt
+          echo "Config schema vars: $(wc -l < /tmp/schema_vars.txt)"
+
+      - name: Extract env vars from configuration.md
+        run: |
+          grep -oE 'AGENTOS_[A-Z_]+' docs/guide/configuration.md | sort -u > /tmp/guide_vars.txt
+          echo "Configuration guide vars: $(wc -l < /tmp/guide_vars.txt)"
+
+      - name: Check for name drift between schema and guide
+        run: |
+          MISSING_FROM_SCHEMA=$(comm -23 /tmp/guide_vars.txt /tmp/schema_vars.txt)
+          MISSING_FROM_GUIDE=$(comm -13 /tmp/guide_vars.txt /tmp/schema_vars.txt)
+
+          FAIL=0
+
+          if [ -n "$MISSING_FROM_SCHEMA" ]; then
+            echo "FAIL: Env vars in configuration.md but missing from config-schema.yaml:"
+            echo "$MISSING_FROM_SCHEMA"
+            FAIL=1
+          fi
+
+          if [ -n "$MISSING_FROM_GUIDE" ]; then
+            echo "FAIL: Env vars in config-schema.yaml but missing from configuration.md:"
+            echo "$MISSING_FROM_GUIDE"
+            FAIL=1
+          fi
+
+          if [ "$FAIL" -eq 0 ]; then
+            echo "OK: config-schema.yaml and configuration.md env var names are in sync"
+          else
+            exit 1
+          fi
+
+      - name: Check for type drift between schema and guide
+        run: |
+          python3 - <<'PYEOF'
+          import re, sys, yaml
+
+          with open("docs/config-schema.yaml") as f:
+              schema = yaml.safe_load(f)
+
+          schema_types = {}
+          groups = schema.get("groups", {})
+          if not isinstance(groups, dict):
+              groups = {}
+          for group_name, group in groups.items():
+              if not isinstance(group, dict):
+                  continue
+              variables = group.get("variables", {})
+              if not isinstance(variables, dict):
+                  continue
+              for var_name, var_def in variables.items():
+                  if isinstance(var_def, dict) and "type" in var_def:
+                      schema_types[var_name] = var_def["type"]
+
+          guide_types = {}
+          with open("docs/guide/configuration.md") as f:
+              for line in f:
+                  m = re.match(r'\|\s*`?(AGENTOS_[A-Z_]+)`?\s*\|\s*(\w+)', line)
+                  if m:
+                      guide_types[m.group(1)] = m.group(2)
+
+          fail = False
+          for var in sorted(set(schema_types) & set(guide_types)):
+              st = schema_types[var].lower()
+              gt = guide_types[var].lower()
+              if st != gt:
+                  print(f"TYPE MISMATCH: {var} -- schema={st}, guide={gt}")
+                  fail = True
+
+          if fail:
+              sys.exit(1)
+          else:
+              print(f"OK: Types match for {len(set(schema_types) & set(guide_types))} vars")
+          PYEOF
+
+  api-examples:
+    name: API examples vs OpenAPI spec validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate example field names against OpenAPI schemas
+        run: |
+          python3 - <<'PYEOF'
+          import json, glob, re, sys
+
+          spec_properties = set()
+          for spec_file in glob.glob("docs/api/*/openapi.yaml") + glob.glob("docs/api/openapi.yaml"):
+              with open(spec_file) as f:
+                  content = f.read()
+              for m in re.finditer(r'^\s{4,}(\w+):', content, re.MULTILINE):
+                  spec_properties.add(m.group(1))
+
+          # Structural keys used in example JSON (not schema fields)
+          STRUCTURAL = {
+              "_description", "method", "path", "headers", "body", "status",
+              "request", "response", "content_type", "Authorization",
+              "Content-Type", "X-Tenant-Id", "X-Confirm-Delete",
+          }
+
+          # OpenAI-compatible response fields (chat completions passthrough)
+          OPENAI_COMPAT = {
+              "object", "data", "prompt_tokens", "completion_tokens",
+              "finish_reason", "index", "embedding",
+          }
+
+          # Fields in nested/event payloads not extractable by regex from YAML
+          # TODO: Replace regex extraction with full YAML parser to remove this list
+          NESTED_PAYLOAD = {
+              "created_by", "event_type", "result", "retry_of", "step", "timeout",
+              "actor", "age_hours", "audit_events", "by_model", "count", "detail",
+              "field", "token_type", "total_findings", "total_runs", "usage_records",
+              "allowed_models", "expires_in_days", "key_prefix", "max_concurrent_runs",
+              "plan", "run_create_qps", "slug",
+              "agent-orchestrator_base_url", "model-policy_base_url",
+          }
+
+          ALLOWED_EXTRA = STRUCTURAL | OPENAI_COMPAT | NESTED_PAYLOAD
+
+          def collect_keys(obj, keys=None):
+              if keys is None:
+                  keys = set()
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      keys.add(k)
+                      collect_keys(v, keys)
+              elif isinstance(obj, list):
+                  for item in obj:
+                      collect_keys(item, keys)
+              return keys
+
+          warnings = 0
+          for example_file in sorted(glob.glob("docs/api/examples/*.json")):
+              with open(example_file) as f:
+                  examples = json.load(f)
+              example_keys = collect_keys(examples)
+              operation_keys = set(examples.keys())
+              example_keys -= operation_keys
+              unknown = example_keys - spec_properties - ALLOWED_EXTRA
+              if unknown:
+                  print(f"WARN: {example_file} has fields not in any OpenAPI spec: {sorted(unknown)}")
+                  warnings += 1
+
+          total = len(glob.glob("docs/api/examples/*.json"))
+          print(f"Checked {total} example files against {len(spec_properties)} spec properties, {warnings} warnings")
+          if warnings > 0:
+              sys.exit(1)
+          PYEOF
+
+  runbook-ports:
+    name: Runbook port consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check runbook ports match deployment configs
+        run: |
+          COMPOSE_PORTS=$(grep -hE '^\s*-\s*"?[0-9]+:[0-9]+"?' deploy/*/compose*.yaml 2>/dev/null | grep -oE '[0-9]+:[0-9]+' | sort -u)
+          HOST_PORTS=$(echo "$COMPOSE_PORTS" | cut -d: -f1 | sort -u)
+          CONTAINER_PORTS=$(echo "$COMPOSE_PORTS" | cut -d: -f2 | sort -u)
+          HELM_PORTS=$(grep -E '^\s+port:' deploy/helm/*/values.yaml 2>/dev/null | grep -oE '[0-9]+' | sort -u)
+
+          echo "Host ports: $HOST_PORTS"
+          echo "Container ports: $CONTAINER_PORTS"
+          echo "Helm ports: $HELM_PORTS"
+
+          FAIL=0
+          for f in docs/ops/*.md; do
+            RUNBOOK_PORTS=$(grep -oE 'localhost:[0-9]+|127\.0\.0\.1:[0-9]+' "$f" 2>/dev/null | grep -oE '[0-9]+$' | sort -u)
+            for rp in $RUNBOOK_PORTS; do
+              if ! echo "$HOST_PORTS $CONTAINER_PORTS $HELM_PORTS" | grep -qw "$rp"; then
+                echo "FAIL: $f references port $rp which is not in any deployment config"
+                FAIL=1
+              fi
+            done
+          done
+
+          if [ "$FAIL" -eq 0 ]; then
+            echo "OK: Runbook ports are consistent with deployment configs"
+          else
+            exit 1
+          fi
